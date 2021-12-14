@@ -384,7 +384,7 @@ const (
 
 // PlatformType is a specific supported infrastructure provider.
 //
-// +kubebuilder:validation:Enum=AWS;None;IBMCloud;Agent
+// +kubebuilder:validation:Enum=AWS;None;IBMCloud;Agent;KubeVirt
 type PlatformType string
 
 const (
@@ -399,6 +399,9 @@ const (
 
 	// AgentPlatform represents user supplied insfrastructure booted with agents.
 	AgentPlatform PlatformType = "Agent"
+
+	// KubevirtPlatform represents Kubevirt infrastructure.
+	KubevirtPlatform PlatformType = "KubeVirt"
 )
 
 // PlatformSpec specifies the underlying infrastructure provider for the cluster
@@ -415,6 +418,15 @@ type PlatformSpec struct {
 	// +optional
 	// +immutable
 	AWS *AWSPlatformSpec `json:"aws,omitempty"`
+
+	// IBMCloud defines IBMCloud specific settings for components
+	IBMCloud *IBMCloudPlatformSpec `json:"ibmcloud,omitempty"`
+}
+
+// IBMCloudPlatformSpec defines IBMCloud specific settings for components
+type IBMCloudPlatformSpec struct {
+	// ProviderType is a specific supported infrastructure provider within IBM Cloud.
+	ProviderType configv1.IBMCloudProviderType `json:"providerType,omitempty"`
 }
 
 // AWSCloudProviderConfig specifies AWS networking configuration.
@@ -478,12 +490,13 @@ type AWSPlatformSpec struct {
 	// +immutable
 	ServiceEndpoints []AWSServiceEndpoint `json:"serviceEndpoints,omitempty"`
 
-	// Roles must contain exactly 3 entries representing the locators for roles
+	// Roles must contain exactly 4 entries representing the locators for roles
 	// supporting the following OCP services:
 	//
 	// - openshift-ingress-operator/cloud-credentials
 	// - openshift-image-registry/installer-cloud-credentials
-	//  -openshift-cluster-csi-drivers/ebs-cloud-credentials
+	// - openshift-cluster-csi-drivers/ebs-cloud-credentials
+	// - cloud-network-config-controller/cloud-credentials
 	//
 	// Each role has unique permission requirements whose documentation is TBD.
 	//

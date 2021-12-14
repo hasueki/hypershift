@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	configv1 "github.com/openshift/api/config/v1"
+
 	ignitionapi "github.com/coreos/ignition/v2/config/v3_2/types"
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
@@ -527,11 +529,28 @@ func (r *NodePoolReconciler) reconcile(ctx context.Context, hcluster *hyperv1.Ho
 				return ctrl.Result{}, fmt.Errorf("failed to get AgentMachineTemplate: %w", err)
 			}
 		}
-	case hyperv1.NonePlatform:
-		// TODO: When fleshing out platform None design revisit the right semantic to signal this as conditions in a NodePool.
-		return ctrl.Result{}, nil
+	case hyperv1.KubevirtPlatform:
+		machineTemplate, err = r.reconcileKubevirtMachineTemplate(ctx, nodePool, controlPlaneNamespace)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to reconcile KubevirtMachineTemplate: %w", err)
+		}
+		span.AddEvent("reconciled kubevirtmachinetemplate", trace.WithAttributes(attribute.String("name", machineTemplate.GetName())))
 	}
 
+	// non automated infrastructure should not have any machine level cluster-api components
+	if !isAutomatedMachineManagement(nodePool) {
+		nodePool.Status.Version = targetVersion
+		if nodePool.Annotations == nil {
+			nodePool.Annotations = make(map[string]string)
+		}
+		if nodePool.Annotations[nodePoolAnnotationCurrentConfig] != targetConfigHash {
+			log.Info("Config update complete",
+				"previous", nodePool.Annotations[nodePoolAnnotationCurrentConfig], "new", targetConfigHash)
+			nodePool.Annotations[nodePoolAnnotationCurrentConfig] = targetConfigHash
+		}
+		nodePool.Annotations[nodePoolAnnotationCurrentConfigVersion] = targetConfigVersionHash
+		return ctrl.Result{}, nil
+	}
 	md := machineDeployment(nodePool, infraID, controlPlaneNamespace)
 	if result, err := controllerutil.CreateOrPatch(ctx, r.Client, md, func() error {
 		return r.reconcileMachineDeployment(
@@ -548,7 +567,6 @@ func (r *NodePoolReconciler) reconcile(ctx context.Context, hcluster *hyperv1.Ho
 		log.Info("Reconciled MachineDeployment", "result", result)
 		span.AddEvent("reconciled machinedeployment", trace.WithAttributes(attribute.String("result", string(result))))
 	}
-
 	mhc := machineHealthCheck(nodePool, controlPlaneNamespace)
 	if nodePool.Spec.Management.AutoRepair {
 		if result, err := ctrl.CreateOrUpdate(ctx, r.Client, mhc, func() error {
@@ -579,7 +597,6 @@ func (r *NodePoolReconciler) reconcile(ctx context.Context, hcluster *hyperv1.Ho
 			ObservedGeneration: nodePool.Generation,
 		})
 	}
-
 	return ctrl.Result{}, nil
 }
 
@@ -713,10 +730,6 @@ func (r *NodePoolReconciler) reconcileMachineDeployment(log logr.Logger,
 			Labels: map[string]string{
 				resourcesName:           resourcesName,
 				capiv1.ClusterLabelName: CAPIClusterName,
-			},
-			// TODO (alberto): drop/expose this annotation at the nodePool API
-			Annotations: map[string]string{
-				"machine.cluster.x-k8s.io/exclude-node-draining": "true",
 			},
 		},
 
@@ -1303,4 +1316,16 @@ func RemoveStatusCondition(conditions *[]metav1.Condition, conditionType string)
 	}
 
 	*conditions = newConditions
+}
+
+func isAutomatedMachineManagement(nodePool *hyperv1.NodePool) bool {
+	return !(isIBMUPI(nodePool) || isPlatformNone(nodePool))
+}
+
+func isIBMUPI(nodePool *hyperv1.NodePool) bool {
+	return nodePool.Spec.Platform.IBMCloud != nil && nodePool.Spec.Platform.IBMCloud.ProviderType == configv1.IBMCloudProviderTypeUPI
+}
+
+func isPlatformNone(nodePool *hyperv1.NodePool) bool {
+	return nodePool.Spec.Platform.Type == hyperv1.NonePlatform
 }

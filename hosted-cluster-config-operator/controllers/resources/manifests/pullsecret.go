@@ -13,3 +13,10 @@ func PullSecret(ns string) *corev1.Secret {
 		},
 	}
 }
+
+func PullSecretTargetNamespaces() []string {
+	return []string{
+		"openshift-config",
+		"openshift",
+	}
+}

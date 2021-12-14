@@ -7,6 +7,7 @@ import (
 	"github.com/openshift/hypershift/cmd/cluster/agent"
 	"github.com/openshift/hypershift/cmd/cluster/aws"
 	"github.com/openshift/hypershift/cmd/cluster/core"
+	"github.com/openshift/hypershift/cmd/cluster/kubevirt"
 	"github.com/openshift/hypershift/cmd/cluster/none"
 	"github.com/spf13/cobra"
 )
@@ -22,6 +23,9 @@ func NewCreateCommands() *cobra.Command {
 		NetworkType:                    string(hyperv1.OpenShiftSDN),
 		InfrastructureJSON:             "",
 		InfraID:                        "",
+		ServiceCIDR:                    "172.31.0.0/16",
+		PodCIDR:                        "10.132.0.0/14",
+		Wait:                           false,
 	}
 	cmd := &cobra.Command{
 		Use:          "cluster",
@@ -30,6 +34,7 @@ func NewCreateCommands() *cobra.Command {
 	}
 	cmd.PersistentFlags().StringVar(&opts.Namespace, "namespace", opts.Namespace, "A namespace to contain the generated resources")
 	cmd.PersistentFlags().StringVar(&opts.Name, "name", opts.Name, "A name for the cluster")
+	cmd.PersistentFlags().StringVar(&opts.BaseDomain, "base-domain", opts.BaseDomain, "The ingress base domain for the cluster")
 	cmd.PersistentFlags().StringVar(&opts.NetworkType, "network-type", opts.NetworkType, "Enum specifying the cluster SDN provider. Supports either Calico or OpenshiftSDN.")
 	cmd.PersistentFlags().StringVar(&opts.ReleaseImage, "release-image", opts.ReleaseImage, "The OCP release image for the cluster")
 	cmd.PersistentFlags().StringVar(&opts.PullSecretFile, "pull-secret", opts.PullSecretFile, "Path to a pull secret (required)")
@@ -46,12 +51,16 @@ func NewCreateCommands() *cobra.Command {
 	cmd.PersistentFlags().StringVar(&opts.EtcdStorageClass, "etcd-storage-class", opts.EtcdStorageClass, "The persistent volume storage class for etcd data volumes")
 	cmd.PersistentFlags().StringVar(&opts.InfrastructureJSON, "infra-json", opts.InfrastructureJSON, "Path to file containing infrastructure information for the cluster. If not specified, infrastructure will be created")
 	cmd.PersistentFlags().StringVar(&opts.InfraID, "infra-id", opts.InfraID, "Infrastructure ID to use for hosted cluster resources.")
+	cmd.PersistentFlags().StringVar(&opts.ServiceCIDR, "service-cidr", opts.ServiceCIDR, "The CIDR of the service network")
+	cmd.PersistentFlags().StringVar(&opts.PodCIDR, "pod-cidr", opts.PodCIDR, "The CIDR of the pod network")
+	cmd.PersistentFlags().BoolVar(&opts.Wait, "wait", opts.Wait, "If the create command should block until the cluster is up. Requires at least one node.")
 
 	cmd.MarkPersistentFlagRequired("pull-secret")
 
 	cmd.AddCommand(aws.NewCreateCommand(opts))
 	cmd.AddCommand(none.NewCreateCommand(opts))
 	cmd.AddCommand(agent.NewCreateCommand(opts))
+	cmd.AddCommand(kubevirt.NewCreateCommand(opts))
 
 	return cmd
 }
@@ -79,6 +88,7 @@ func NewDestroyCommands() *cobra.Command {
 	cmd.AddCommand(aws.NewDestroyCommand(opts))
 	cmd.AddCommand(none.NewDestroyCommand(opts))
 	cmd.AddCommand(agent.NewDestroyCommand(opts))
+	cmd.AddCommand(kubevirt.NewDestroyCommand(opts))
 
 	return cmd
 }

@@ -45,13 +45,15 @@ func NewCreateCommand(opts *core.CreateOptions) *cobra.Command {
 }
 
 func CreateCluster(ctx context.Context, opts *core.CreateOptions) error {
+	if err := core.Validate(ctx, opts); err != nil {
+		return err
+	}
 	return core.CreateCluster(ctx, opts, applyPlatformSpecificsValues)
 }
 
 func applyPlatformSpecificsValues(ctx context.Context, exampleOptions *apifixtures.ExampleOptions, opts *core.CreateOptions) (err error) {
 	if opts.NonePlatform.APIServerAddress == "" {
-		opts.NonePlatform.APIServerAddress, err = core.GetAPIServerAddressByNode(ctx)
-		if err != nil {
+		if opts.NonePlatform.APIServerAddress, err = core.GetAPIServerAddressByNode(ctx); err != nil {
 			return err
 		}
 	}

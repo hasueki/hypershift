@@ -192,17 +192,19 @@ func (o *options) DefaultClusterOptions() core.CreateOptions {
 		SSHKeyFile:                "",
 		NodePoolReplicas:          2,
 		NetworkType:               string(hyperv1.OpenShiftSDN),
+		BaseDomain:                o.configurableClusterOptions.BaseDomain,
 		PullSecretFile:            o.configurableClusterOptions.PullSecretFile,
 		ControlPlaneOperatorImage: o.configurableClusterOptions.ControlPlaneOperatorImage,
 		AWSPlatform: core.AWSPlatformOptions{
 			InstanceType:       "m4.large",
 			RootVolumeSize:     64,
 			RootVolumeType:     "gp2",
-			BaseDomain:         o.configurableClusterOptions.BaseDomain,
 			AWSCredentialsFile: o.configurableClusterOptions.AWSCredentialsFile,
 			Region:             o.configurableClusterOptions.Region,
 			EndpointAccess:     o.configurableClusterOptions.AWSEndpointAccess,
 		},
+		ServiceCIDR: "172.31.0.0/16",
+		PodCIDR:     "10.132.0.0/14",
 	}
 	createOption.AWSPlatform.AdditionalTags = append(createOption.AWSPlatform.AdditionalTags, o.additionalTags...)
 
