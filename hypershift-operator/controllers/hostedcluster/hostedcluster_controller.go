@@ -45,6 +45,7 @@ import (
 	hyperutil "github.com/openshift/hypershift/hypershift-operator/controllers/util"
 	"github.com/openshift/hypershift/support/capabilities"
 	"github.com/openshift/hypershift/support/certs"
+	"github.com/openshift/hypershift/support/config"
 	"github.com/openshift/hypershift/support/releaseinfo"
 	"github.com/openshift/hypershift/support/upsert"
 	"github.com/openshift/hypershift/support/util"
@@ -127,8 +128,8 @@ type HostedClusterReconciler struct {
 	// Log is a thread-safe logger.
 	Log logr.Logger
 
-	// SetSecurityContext is used to configure Security Context for containers
-	SetSecurityContext bool
+	// SetDefaultSecurityContext is used to configure Security Context for containers
+	SetDefaultSecurityContext bool
 
 	// Clock is used to determine the time in a testable way.
 	Clock clock.Clock
@@ -172,15 +173,13 @@ func (r *HostedClusterReconciler) SetupWithManager(mgr ctrl.Manager, createOrUpd
 			RateLimiter: workqueue.NewItemExponentialFailureRateLimiter(1*time.Second, 10*time.Second),
 		})
 
-	// checking for routes capability
+	// Watch based on Routes capability
 	if r.ManagementClusterCapabilities.Has(capabilities.CapabilityRoute) {
 		builder.Watches(&source.Kind{Type: &routev1.Route{}}, handler.EnqueueRequestsFromMapFunc(enqueueParentHostedCluster))
 	}
 
-	// checking for scc capability
-	if !r.ManagementClusterCapabilities.Has(capabilities.CapabilitySecurityContextConstraint) {
-		r.SetSecurityContext = true
-	}
+	// Set based on SCC capability
+	r.SetDefaultSecurityContext = !r.ManagementClusterCapabilities.Has(capabilities.CapabilitySecurityContextConstraint)
 
 	return builder.Complete(r)
 }
@@ -1135,7 +1134,7 @@ func (r *HostedClusterReconciler) reconcileCAPIManager(ctx context.Context, crea
 	_, err = createOrUpdate(ctx, r.Client, capiManagerDeployment, func() error {
 		// TODO (alberto): This image builds from https://github.com/kubernetes-sigs/cluster-api/pull/4709
 		// We need to build from main branch and push to quay.io/hypershift once this is merged or otherwise enable webhooks.
-		return reconcileCAPIManagerDeployment(capiManagerDeployment, hcluster, capiManagerServiceAccount, capiImage, r.SetSecurityContext)
+		return reconcileCAPIManagerDeployment(capiManagerDeployment, hcluster, capiManagerServiceAccount, capiImage, r.SetDefaultSecurityContext)
 	})
 	if err != nil {
 		return fmt.Errorf("failed to reconcile capi manager deployment: %w", err)
@@ -1205,9 +1204,9 @@ func (r *HostedClusterReconciler) reconcileCAPIProvider(ctx context.Context, cre
 		deployment.Spec.Template.Spec.ServiceAccountName = capiProviderServiceAccount.Name
 
 		// set security context
-		if r.SetSecurityContext {
+		if r.SetDefaultSecurityContext {
 			deployment.Spec.Template.Spec.SecurityContext = &corev1.PodSecurityContext{
-				RunAsUser: k8sutilspointer.Int64Ptr(1001),
+				RunAsUser: k8sutilspointer.Int64Ptr(config.DefaultSecurityContextUser),
 			}
 		}
 
@@ -1700,9 +1699,9 @@ func (r *HostedClusterReconciler) reconcileIgnitionServer(ctx context.Context, c
 		}
 
 		// set security context
-		if r.SetSecurityContext {
+		if r.SetDefaultSecurityContext {
 			ignitionServerDeployment.Spec.Template.Spec.SecurityContext = &corev1.PodSecurityContext{
-				RunAsUser: k8sutilspointer.Int64Ptr(1001),
+				RunAsUser: k8sutilspointer.Int64Ptr(config.DefaultSecurityContextUser),
 			}
 		}
 
@@ -1791,7 +1790,7 @@ func (r *HostedClusterReconciler) reconcileAutoscaler(ctx context.Context, creat
 		}
 		autoScalerDeployment := autoscaler.AutoScalerDeployment(controlPlaneNamespace.Name)
 		_, err = createOrUpdate(ctx, r.Client, autoScalerDeployment, func() error {
-			return reconcileAutoScalerDeployment(autoScalerDeployment, hcluster, autoScalerServiceAccount, capiKubeConfigSecret, hcluster.Spec.Autoscaling, clusterAutoScalerImage, r.AvailabilityProberImage, r.SetSecurityContext)
+			return reconcileAutoScalerDeployment(autoScalerDeployment, hcluster, autoScalerServiceAccount, capiKubeConfigSecret, hcluster.Spec.Autoscaling, clusterAutoScalerImage, r.AvailabilityProberImage, r.SetDefaultSecurityContext)
 		})
 		if err != nil {
 			return fmt.Errorf("failed to reconcile autoscaler deployment: %w", err)
@@ -2139,7 +2138,7 @@ func reconcileCAPICluster(cluster *capiv1.Cluster, hcluster *hyperv1.HostedClust
 	return nil
 }
 
-func reconcileCAPIManagerDeployment(deployment *appsv1.Deployment, hc *hyperv1.HostedCluster, sa *corev1.ServiceAccount, capiManagerImage string, explicitNonRootSecurityContext bool) error {
+func reconcileCAPIManagerDeployment(deployment *appsv1.Deployment, hc *hyperv1.HostedCluster, sa *corev1.ServiceAccount, capiManagerImage string, setDefaultSecurityContext bool) error {
 	defaultMode := int32(420)
 	capiManagerLabels := map[string]string{
 		"name":                        "cluster-api",
@@ -2235,9 +2234,9 @@ func reconcileCAPIManagerDeployment(deployment *appsv1.Deployment, hc *hyperv1.H
 		},
 	}
 	// set security context
-	if explicitNonRootSecurityContext {
+	if setDefaultSecurityContext {
 		deployment.Spec.Template.Spec.SecurityContext = &corev1.PodSecurityContext{
-			RunAsUser: k8sutilspointer.Int64Ptr(1001),
+			RunAsUser: k8sutilspointer.Int64Ptr(config.DefaultSecurityContextUser),
 		}
 	}
 
@@ -2423,7 +2422,7 @@ func reconcileCAPIProviderRoleBinding(binding *rbacv1.RoleBinding, role *rbacv1.
 	return nil
 }
 
-func reconcileAutoScalerDeployment(deployment *appsv1.Deployment, hc *hyperv1.HostedCluster, sa *corev1.ServiceAccount, kubeConfigSecret *corev1.Secret, options hyperv1.ClusterAutoscaling, clusterAutoScalerImage string, availabilityProberImage string, explicitNonRootSecurityContext bool) error {
+func reconcileAutoScalerDeployment(deployment *appsv1.Deployment, hc *hyperv1.HostedCluster, sa *corev1.ServiceAccount, kubeConfigSecret *corev1.Secret, options hyperv1.ClusterAutoscaling, clusterAutoScalerImage string, availabilityProberImage string, setDefaultSecurityContext bool) error {
 	args := []string{
 		"--cloud-provider=clusterapi",
 		"--node-group-auto-discovery=clusterapi:namespace=$(MY_NAMESPACE)",
@@ -2570,9 +2569,9 @@ func reconcileAutoScalerDeployment(deployment *appsv1.Deployment, hc *hyperv1.Ho
 	util.AvailabilityProber(kas.InClusterKASReadyURL(deployment.Namespace, port), availabilityProberImage, &deployment.Spec.Template.Spec)
 
 	// set security context
-	if explicitNonRootSecurityContext {
+	if setDefaultSecurityContext {
 		deployment.Spec.Template.Spec.SecurityContext = &corev1.PodSecurityContext{
-			RunAsUser: k8sutilspointer.Int64Ptr(1001),
+			RunAsUser: k8sutilspointer.Int64Ptr(config.DefaultSecurityContextUser),
 		}
 	}
 
@@ -3011,7 +3010,7 @@ func (r *HostedClusterReconciler) reconcileMachineApprover(ctx context.Context, 
 		}
 		deployment := machineapprover.Deployment(controlPlaneNamespaceName)
 		if _, err := createOrUpdate(ctx, r.Client, deployment, func() error {
-			return reconcileMachineApproverDeployment(deployment, hcluster, sa, kubeconfigSecretName, config, image, r.AvailabilityProberImage, r.SetSecurityContext)
+			return reconcileMachineApproverDeployment(deployment, hcluster, sa, kubeconfigSecretName, config, image, r.AvailabilityProberImage, r.SetDefaultSecurityContext)
 		}); err != nil {
 			return fmt.Errorf("failed to reconcile machine-approver deployment: %w", err)
 		}
@@ -3107,7 +3106,7 @@ func reconcileMachineApproverRoleBinding(binding *rbacv1.RoleBinding, role *rbac
 	return nil
 }
 
-func reconcileMachineApproverDeployment(deployment *appsv1.Deployment, hc *hyperv1.HostedCluster, sa *corev1.ServiceAccount, kubeconfigSecretName string, config *corev1.ConfigMap, machineApproverImage, availabilityProberImage string, explicitNonRootSecurityContext bool) error {
+func reconcileMachineApproverDeployment(deployment *appsv1.Deployment, hc *hyperv1.HostedCluster, sa *corev1.ServiceAccount, kubeconfigSecretName string, cm *corev1.ConfigMap, machineApproverImage, availabilityProberImage string, setDefaultSecurityContext bool) error {
 	// TODO: enable leader election when the flag is added in machine-approver
 	args := []string{
 		"--config=/var/run/configmaps/config/config.yaml",
@@ -3155,7 +3154,7 @@ func reconcileMachineApproverDeployment(deployment *appsv1.Deployment, hc *hyper
 						VolumeSource: corev1.VolumeSource{
 							ConfigMap: &corev1.ConfigMapVolumeSource{
 								LocalObjectReference: corev1.LocalObjectReference{
-									Name: config.Name,
+									Name: cm.Name,
 								},
 								Optional:    k8sutilspointer.BoolPtr(true),
 								DefaultMode: k8sutilspointer.Int32Ptr(440),
@@ -3198,9 +3197,9 @@ func reconcileMachineApproverDeployment(deployment *appsv1.Deployment, hc *hyper
 	util.AvailabilityProber(kas.InClusterKASReadyURL(deployment.Namespace, port), availabilityProberImage, &deployment.Spec.Template.Spec)
 
 	// set security context
-	if explicitNonRootSecurityContext {
+	if setDefaultSecurityContext {
 		deployment.Spec.Template.Spec.SecurityContext = &corev1.PodSecurityContext{
-			RunAsUser: k8sutilspointer.Int64Ptr(1001),
+			RunAsUser: k8sutilspointer.Int64Ptr(config.DefaultSecurityContextUser),
 		}
 	}
 

@@ -5,7 +5,6 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	k8sutilspointer "k8s.io/utils/pointer"
 
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/pointer"
@@ -17,7 +16,7 @@ type DeploymentConfig struct {
 	AdditionalLabels          AdditionalLabels      `json:"additionalLabels"`
 	AdditionalAnnotations     AdditionalAnnotations `json:"additionalAnnotations"`
 	SecurityContexts          SecurityContextSpec   `json:"securityContexts"`
-	SetSecurityContextNonRoot bool                  `json:"explicitNonRootSecurityContext"`
+	SetDefaultSecurityContext bool                  `json:"setDefaultSecurityContext"`
 	LivenessProbes            LivenessProbes        `json:"livenessProbes"`
 	ReadinessProbes           ReadinessProbes       `json:"readinessProbes"`
 	Resources                 ResourcesSpec         `json:"resources"`
@@ -178,10 +177,10 @@ func (c *DeploymentConfig) ApplyTo(deployment *appsv1.Deployment) {
 		deployment.Spec.Strategy.RollingUpdate.MaxUnavailable = &maxUnavailable
 	}
 
-	// set Security Context to Non Root at the Spec level
-	if c.SetSecurityContextNonRoot {
+	// set default security context for pod
+	if c.SetDefaultSecurityContext {
 		deployment.Spec.Template.Spec.SecurityContext = &corev1.PodSecurityContext{
-			RunAsUser: k8sutilspointer.Int64(1001),
+			RunAsUser: pointer.Int64(DefaultSecurityContextUser),
 		}
 	}
 
