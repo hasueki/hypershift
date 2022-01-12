@@ -120,6 +120,8 @@ func (r *HostedControlPlaneReconciler) SetupWithManager(mgr ctrl.Manager) error 
 	}
 
 	// Set based on SCC capability
+	// When SCC is available (OpenShift), the container's security context and UID range is automatically set
+	// When SCC is not available (Kubernetes), we want to explicitly set a default (non-root) security context
 	r.SetDefaultSecurityContext = !r.ManagementClusterCapabilities.Has(capabilities.CapabilitySecurityContextConstraint)
 
 	return nil
