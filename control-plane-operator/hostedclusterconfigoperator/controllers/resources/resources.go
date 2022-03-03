@@ -355,7 +355,7 @@ func (r *reconciler) reconcile(ctx context.Context) error {
 	}
 
 	log.Info("reconciling olm resources")
-	errs = append(errs, r.reconcileOLM(ctx, hcp)...)
+	errs = append(errs, r.reconcileOLM(ctx, hcp, releaseImage)...)
 
 	log.Info("reconciling observed configuration")
 	errs = append(errs, r.reconcileObservedConfiguration(ctx, hcp)...)
@@ -793,9 +793,110 @@ func (r *reconciler) reconcileCloudCredentialSecrets(ctx context.Context, hcp *h
 	return errs
 }
 
-func (r *reconciler) reconcileOLM(ctx context.Context, hcp *hyperv1.HostedControlPlane) []error {
+func (r *reconciler) reconcileOLM(ctx context.Context, hcp *hyperv1.HostedControlPlane, releaseImage *releaseinfo.ReleaseImage) []error {
 	var errs []error
 
+	p := olm.NewOperatorLifecycleManagerParams(hcp, releaseImage.ComponentImages())
+
+	// Operator services
+	certifiedOperatorsService := manifests.CertifiedOperatorsService(hcp.Namespace)
+	if _, err := r.CreateOrUpdate(ctx, r.client, certifiedOperatorsService, func() error {
+		return olm.ReconcileCertifiedOperatorsService(certifiedOperatorsService, p.OwnerRef)
+	}); err != nil {
+		errs = append(errs, fmt.Errorf("failed to reconcile certified operators service: %w", err))
+	}
+	communityOperatorsService := manifests.CommunityOperatorsService(hcp.Namespace)
+	if _, err := r.CreateOrUpdate(ctx, r.client, communityOperatorsService, func() error {
+		return olm.ReconcileCommunityOperatorsService(communityOperatorsService, p.OwnerRef)
+	}); err != nil {
+		errs = append(errs, fmt.Errorf("failed to reconcile community operators service: %w", err))
+	}
+	marketplaceOperatorsService := manifests.RedHatMarketplaceOperatorsService(hcp.Namespace)
+	if _, err := r.CreateOrUpdate(ctx, r.client, marketplaceOperatorsService, func() error {
+		return olm.ReconcileRedHatMarketplaceOperatorsService(marketplaceOperatorsService, p.OwnerRef)
+	}); err != nil {
+		errs = append(errs, fmt.Errorf("failed to reconcile marketplace operators service: %w", err))
+	}
+	redHatOperatorsService := manifests.RedHatOperatorsService(hcp.Namespace)
+	if _, err := r.CreateOrUpdate(ctx, r.client, redHatOperatorsService, func() error {
+		return olm.ReconcileRedHatOperatorsService(redHatOperatorsService, p.OwnerRef)
+	}); err != nil {
+		errs = append(errs, fmt.Errorf("failed to reconcile red hat operators service: %w", err))
+	}
+
+	// Operator deployments
+	certifiedOperatorsDeployment := manifests.CertifiedOperatorsDeployment(hcp.Namespace)
+	if _, err := r.CreateOrUpdate(ctx, r.client, certifiedOperatorsDeployment, func() error {
+		return olm.ReconcileCertifiedOperatorsDeployment(certifiedOperatorsDeployment, p.OwnerRef, p.DeploymentConfig)
+	}); err != nil {
+		errs = append(errs, fmt.Errorf("failed to reconcile certified operators deployment: %w", err))
+	}
+	communityOperatorsDeployment := manifests.CommunityOperatorsDeployment(hcp.Namespace)
+	if _, err := r.CreateOrUpdate(ctx, r.client, communityOperatorsDeployment, func() error {
+		return olm.ReconcileCommunityOperatorsDeployment(communityOperatorsDeployment, p.OwnerRef, p.DeploymentConfig)
+	}); err != nil {
+		errs = append(errs, fmt.Errorf("failed to reconcile community operators deployment: %w", err))
+	}
+	marketplaceOperatorsDeployment := manifests.RedHatMarketplaceOperatorsDeployment(hcp.Namespace)
+	if _, err := r.CreateOrUpdate(ctx, r.client, marketplaceOperatorsDeployment, func() error {
+		return olm.ReconcileRedHatMarketplaceOperatorsDeployment(marketplaceOperatorsDeployment, p.OwnerRef, p.DeploymentConfig)
+	}); err != nil {
+		errs = append(errs, fmt.Errorf("failed to reconcile marketplace operators deployment: %w", err))
+	}
+	redHatOperatorsDeployment := manifests.RedHatOperatorsDeployment(hcp.Namespace)
+	if _, err := r.CreateOrUpdate(ctx, r.client, redHatOperatorsDeployment, func() error {
+		return olm.ReconcileRedHatOperatorsDeployment(redHatOperatorsDeployment, p.OwnerRef, p.DeploymentConfig)
+	}); err != nil {
+		errs = append(errs, fmt.Errorf("failed to reconcile red hat operators deployment: %w", err))
+	}
+
+	// Catalog rollout RBAC
+	catalogRolloutSA := manifests.CatalogRolloutServiceAccount(hcp.Namespace)
+	if _, err := r.CreateOrUpdate(ctx, r.client, catalogRolloutSA, func() error {
+		return olm.ReconcileCatalogRolloutServiceAccount(catalogRolloutSA, p.OwnerRef)
+	}); err != nil {
+		errs = append(errs, fmt.Errorf("failed to reconcile catalog rollout service account: %w", err))
+	}
+	catalogRolloutRole := manifests.CatalogRolloutRole(hcp.Namespace)
+	if _, err := r.CreateOrUpdate(ctx, r.client, catalogRolloutRole, func() error {
+		return olm.ReconcileCatalogRolloutRole(catalogRolloutRole, p.OwnerRef)
+	}); err != nil {
+		errs = append(errs, fmt.Errorf("failed to reconcile catalog rollout role: %w", err))
+	}
+	catalogRolloutRoleBinding := manifests.CatalogRolloutRoleBinding(hcp.Namespace)
+	if _, err := r.CreateOrUpdate(ctx, r.client, catalogRolloutRoleBinding, func() error {
+		return olm.ReconcileCatalogRolloutRoleBinding(catalogRolloutRoleBinding, p.OwnerRef)
+	}); err != nil {
+		errs = append(errs, fmt.Errorf("failed to reconcile catalog rollout rolebinding: %w", err))
+	}
+
+	// Operator cronjobs
+	certifiedOperatorsCronJob := manifests.CertifiedOperatorsCronJob(hcp.Namespace)
+	if _, err := r.CreateOrUpdate(ctx, r.client, certifiedOperatorsCronJob, func() error {
+		return olm.ReconcileCertifiedOperatorsCronJob(certifiedOperatorsCronJob, p.OwnerRef, p.CLIImage)
+	}); err != nil {
+		errs = append(errs, fmt.Errorf("failed to reconcile certified operators cronjob: %w", err))
+	}
+	communityOperatorsCronJob := manifests.CommunityOperatorsCronJob(hcp.Namespace)
+	if _, err := r.CreateOrUpdate(ctx, r.client, communityOperatorsCronJob, func() error {
+		return olm.ReconcileCommunityOperatorsCronJob(communityOperatorsCronJob, p.OwnerRef, p.CLIImage)
+	}); err != nil {
+		errs = append(errs, fmt.Errorf("failed to reconcile community operators cronjob: %w", err))
+	}
+	marketplaceOperatorsCronJob := manifests.RedHatMarketplaceOperatorsCronJob(hcp.Namespace)
+	if _, err := r.CreateOrUpdate(ctx, r.client, marketplaceOperatorsCronJob, func() error {
+		return olm.ReconcileRedHatMarketplaceOperatorsCronJob(marketplaceOperatorsCronJob, p.OwnerRef, p.CLIImage)
+	}); err != nil {
+		errs = append(errs, fmt.Errorf("failed to reconcile marketplace operators cronjob: %w", err))
+	}
+	redHatOperatorsCronJob := manifests.RedHatOperatorsCronJob(hcp.Namespace)
+	if _, err := r.CreateOrUpdate(ctx, r.client, redHatOperatorsCronJob, func() error {
+		return olm.ReconcileRedHatOperatorsCronJob(redHatOperatorsCronJob, p.OwnerRef, p.CLIImage)
+	}); err != nil {
+		errs = append(errs, fmt.Errorf("failed to reconcile red hat operators cronjob: %w", err))
+	}
+
+	// Catalog sources
 	catalogs := []struct {
 		manifest  func() *operatorsv1alpha1.CatalogSource
 		reconcile func(*operatorsv1alpha1.CatalogSource)

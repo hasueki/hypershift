@@ -6,16 +6,17 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 
 	"github.com/openshift/hypershift/control-plane-operator/controllers/hostedcontrolplane/kas"
+	"github.com/openshift/hypershift/support/assets"
 	"github.com/openshift/hypershift/support/config"
 	"github.com/openshift/hypershift/support/util"
 )
 
 var (
-	catalogOperatorMetricsService = MustService("assets/catalog-metrics-service.yaml")
-	catalogOperatorDeployment     = MustDeployment("assets/catalog-operator-deployment.yaml")
+	catalogOperatorMetricsService = assets.MustService("assets/catalog-metrics-service.yaml")
+	catalogOperatorDeployment     = assets.MustDeployment("assets/catalog-operator-deployment.yaml")
 
-	olmOperatorMetricsService = MustService("assets/olm-metrics-service.yaml")
-	olmOperatorDeployment     = MustDeployment("assets/olm-operator-deployment.yaml")
+	olmOperatorMetricsService = assets.MustService("assets/olm-metrics-service.yaml")
+	olmOperatorDeployment     = assets.MustDeployment("assets/olm-operator-deployment.yaml")
 )
 
 func ReconcileCatalogOperatorMetricsService(svc *corev1.Service, ownerRef config.OwnerRef) error {

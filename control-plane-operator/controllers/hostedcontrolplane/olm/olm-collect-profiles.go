@@ -1,18 +1,20 @@
 package olm
 
 import (
+	"github.com/openshift/hypershift/support/assets"
 	"github.com/openshift/hypershift/support/config"
+	"github.com/openshift/hypershift/support/util"
 	batchv1beta1 "k8s.io/api/batch/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 )
 
 var (
-	olmCollectProfilesConfigMap   = MustConfigMap("assets/olm-collect-profiles.configmap.yaml")
-	olmCollectProfilesCronJob     = MustCronJob("assets/olm-collect-profiles.cronjob.yaml")
-	olmCollectProfilesRole        = MustRole("assets/olm-collect-profiles.role.yaml")
-	olmCollectProfilesRoleBinding = MustRoleBinding("assets/olm-collect-profiles.rolebinding.yaml")
-	olmCollectProfilesSecret      = MustSecret("assets/olm-collect-profiles.secret.yaml")
+	olmCollectProfilesConfigMap   = assets.MustConfigMap("assets/olm-collect-profiles.configmap.yaml")
+	olmCollectProfilesCronJob     = assets.MustCronJob("assets/olm-collect-profiles.cronjob.yaml")
+	olmCollectProfilesRole        = assets.MustRole("assets/olm-collect-profiles.role.yaml")
+	olmCollectProfilesRoleBinding = assets.MustRoleBinding("assets/olm-collect-profiles.rolebinding.yaml")
+	olmCollectProfilesSecret      = assets.MustSecret("assets/olm-collect-profiles.secret.yaml")
 )
 
 func ReconcileCollectProfilesCronJob(cronJob *batchv1beta1.CronJob, ownerRef config.OwnerRef, olmImage, namespace string) {
@@ -24,7 +26,7 @@ func ReconcileCollectProfilesCronJob(cronJob *batchv1beta1.CronJob, ownerRef con
 			cronJob.Spec.JobTemplate.Spec.Template.Spec.Containers[0].Args[i] = namespace
 		}
 	}
-	cronJob.Spec.Schedule = generateModularDailyCronSchedule([]byte(cronJob.Namespace))
+	cronJob.Spec.Schedule = util.GenerateModularDailyCronSchedule([]byte(cronJob.Namespace))
 }
 
 func ReconcileCollectProfilesConfigMap(configMap *corev1.ConfigMap, ownerRef config.OwnerRef) {
