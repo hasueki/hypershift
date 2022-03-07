@@ -643,10 +643,15 @@ func (r *HostedControlPlaneReconciler) update(ctx context.Context, hostedControl
 		return fmt.Errorf("failed to reconcile hosted cluster config operator: %w", err)
 	}
 
+	// TODO: Get from CR spec, or annotation, or reconciler prop...
+	olmMode := "guest"
+
 	// Reconcile OLM
-	r.Log.Info("Reconciling OLM")
-	if err = r.reconcileOperatorLifecycleManager(ctx, hostedControlPlane, releaseImage, infraStatus.PackageServerAPIAddress); err != nil {
-		return fmt.Errorf("failed to reconcile olm: %w", err)
+	if olmMode == "default" {
+		r.Log.Info("Reconciling OLM")
+		if err = r.reconcileOperatorLifecycleManager(ctx, hostedControlPlane, releaseImage, infraStatus.PackageServerAPIAddress); err != nil {
+			return fmt.Errorf("failed to reconcile olm: %w", err)
+		}
 	}
 
 	// Reconcile Ignition
