@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/openshift/hypershift/support/capabilities"
+	"github.com/openshift/hypershift/support/olmcatalogs"
 
 	"github.com/go-logr/logr"
 	configv1 "github.com/openshift/api/config/v1"
@@ -1893,98 +1894,53 @@ func (r *HostedControlPlaneReconciler) reconcileIngressOperatorKubeconfig(ctx co
 func (r *HostedControlPlaneReconciler) reconcileOperatorLifecycleManager(ctx context.Context, hcp *hyperv1.HostedControlPlane, releaseImage *releaseinfo.ReleaseImage, packageServerAddress string) error {
 	p := olm.NewOperatorLifecycleManagerParams(hcp, releaseImage.ComponentImages(), releaseImage.Version(), r.SetDefaultSecurityContext)
 
-	certifiedOperatorsService := manifests.CertifiedOperatorsService(hcp.Namespace)
-	if _, err := r.CreateOrUpdate(ctx, r, certifiedOperatorsService, func() error {
-		return olm.ReconcileCertifiedOperatorsService(certifiedOperatorsService, p.OwnerRef)
-	}); err != nil {
-		return fmt.Errorf("failed to reconcile certified operators service: %w", err)
-	}
-	communityOperatorsService := manifests.CommunityOperatorsService(hcp.Namespace)
-	if _, err := r.CreateOrUpdate(ctx, r, communityOperatorsService, func() error {
-		return olm.ReconcileCommunityOperatorsService(communityOperatorsService, p.OwnerRef)
-	}); err != nil {
-		return fmt.Errorf("failed to reconcile community operators service: %w", err)
-	}
-	marketplaceOperatorsService := manifests.RedHatMarketplaceOperatorsService(hcp.Namespace)
-	if _, err := r.CreateOrUpdate(ctx, r, marketplaceOperatorsService, func() error {
-		return olm.ReconcileRedHatMarketplaceOperatorsService(marketplaceOperatorsService, p.OwnerRef)
-	}); err != nil {
-		return fmt.Errorf("failed to reconcile marketplace operators service: %w", err)
-	}
-	redHatOperatorsService := manifests.RedHatOperatorsService(hcp.Namespace)
-	if _, err := r.CreateOrUpdate(ctx, r, redHatOperatorsService, func() error {
-		return olm.ReconcileRedHatOperatorsService(redHatOperatorsService, p.OwnerRef)
-	}); err != nil {
-		return fmt.Errorf("failed to reconcile red hat operators service: %w", err)
-	}
+	if *hcp.Spec.OLMCatalogPlacement == "management" {
+		for _, service := range olmcatalogs.GetServiceReconcilers() {
+			svc := service.Manifest(hcp.Namespace)
+			if _, err := r.CreateOrUpdate(ctx, r, svc, func() error {
+				return service.Reconcile(svc, p.OwnerRef)
+			}); err != nil {
+				return fmt.Errorf("failed to reconcile %s service: %w", svc.Name, err)
+			}
+		}
 
-	certifiedOperatorsDeployment := manifests.CertifiedOperatorsDeployment(hcp.Namespace)
-	if _, err := r.CreateOrUpdate(ctx, r, certifiedOperatorsDeployment, func() error {
-		return olm.ReconcileCertifiedOperatorsDeployment(certifiedOperatorsDeployment, p.OwnerRef, p.DeploymentConfig)
-	}); err != nil {
-		return fmt.Errorf("failed to reconcile certified operators deployment: %w", err)
-	}
-	communityOperatorsDeployment := manifests.CommunityOperatorsDeployment(hcp.Namespace)
-	if _, err := r.CreateOrUpdate(ctx, r, communityOperatorsDeployment, func() error {
-		return olm.ReconcileCommunityOperatorsDeployment(communityOperatorsDeployment, p.OwnerRef, p.DeploymentConfig)
-	}); err != nil {
-		return fmt.Errorf("failed to reconcile community operators deployment: %w", err)
-	}
-	marketplaceOperatorsDeployment := manifests.RedHatMarketplaceOperatorsDeployment(hcp.Namespace)
-	if _, err := r.CreateOrUpdate(ctx, r, marketplaceOperatorsDeployment, func() error {
-		return olm.ReconcileRedHatMarketplaceOperatorsDeployment(marketplaceOperatorsDeployment, p.OwnerRef, p.DeploymentConfig)
-	}); err != nil {
-		return fmt.Errorf("failed to reconcile marketplace operators deployment: %w", err)
-	}
-	redHatOperatorsDeployment := manifests.RedHatOperatorsDeployment(hcp.Namespace)
-	if _, err := r.CreateOrUpdate(ctx, r, redHatOperatorsDeployment, func() error {
-		return olm.ReconcileRedHatOperatorsDeployment(redHatOperatorsDeployment, p.OwnerRef, p.DeploymentConfig)
-	}); err != nil {
-		return fmt.Errorf("failed to reconcile red hat operators deployment: %w", err)
-	}
+		for _, deployment := range olmcatalogs.GetDeploymentReconcilers() {
+			deploy := deployment.Manifest(hcp.Namespace)
+			if _, err := r.CreateOrUpdate(ctx, r, deploy, func() error {
+				return deployment.Reconcile(deploy, p.OwnerRef, p.DeploymentConfig)
+			}); err != nil {
+				return fmt.Errorf("failed to reconcile %s deployment: %w", deploy.Name, err)
+			}
+		}
 
-	catalogRolloutSA := manifests.CatalogRolloutServiceAccount(hcp.Namespace)
-	if _, err := r.CreateOrUpdate(ctx, r, catalogRolloutSA, func() error {
-		return olm.ReconcileCatalogRolloutServiceAccount(catalogRolloutSA, p.OwnerRef)
-	}); err != nil {
-		return fmt.Errorf("failed to reconcile catalog rollout service account: %w", err)
-	}
-	catalogRolloutRole := manifests.CatalogRolloutRole(hcp.Namespace)
-	if _, err := r.CreateOrUpdate(ctx, r, catalogRolloutRole, func() error {
-		return olm.ReconcileCatalogRolloutRole(catalogRolloutRole, p.OwnerRef)
-	}); err != nil {
-		return fmt.Errorf("failed to reconcile catalog rollout role: %w", err)
-	}
-	catalogRolloutRoleBinding := manifests.CatalogRolloutRoleBinding(hcp.Namespace)
-	if _, err := r.CreateOrUpdate(ctx, r, catalogRolloutRoleBinding, func() error {
-		return olm.ReconcileCatalogRolloutRoleBinding(catalogRolloutRoleBinding, p.OwnerRef)
-	}); err != nil {
-		return fmt.Errorf("failed to reconcile catalog rollout rolebinding: %w", err)
-	}
+		rbac := olmcatalogs.GetRBACReconcilers()
+		sa := rbac.ServiceAccount.Manifest(hcp.Namespace)
+		if _, err := r.CreateOrUpdate(ctx, r, sa, func() error {
+			return rbac.ServiceAccount.Reconcile(sa, p.OwnerRef)
+		}); err != nil {
+			return fmt.Errorf("failed to reconcile %s service account: %w", sa.Name, err)
+		}
+		role := rbac.Role.Manifest(hcp.Namespace)
+		if _, err := r.CreateOrUpdate(ctx, r, role, func() error {
+			return rbac.Role.Reconcile(role, p.OwnerRef)
+		}); err != nil {
+			return fmt.Errorf("failed to reconcile %s role: %w", role.Name, err)
+		}
+		rolebinding := rbac.RoleBinding.Manifest(hcp.Namespace)
+		if _, err := r.CreateOrUpdate(ctx, r, rolebinding, func() error {
+			return rbac.RoleBinding.Reconcile(rolebinding, p.OwnerRef)
+		}); err != nil {
+			return fmt.Errorf("failed to reconcile %s rolebinding: %w", rolebinding.Name, err)
+		}
 
-	certifiedOperatorsCronJob := manifests.CertifiedOperatorsCronJob(hcp.Namespace)
-	if _, err := r.CreateOrUpdate(ctx, r, certifiedOperatorsCronJob, func() error {
-		return olm.ReconcileCertifiedOperatorsCronJob(certifiedOperatorsCronJob, p.OwnerRef, p.CLIImage)
-	}); err != nil {
-		return fmt.Errorf("failed to reconcile certified operators cronjob: %w", err)
-	}
-	communityOperatorsCronJob := manifests.CommunityOperatorsCronJob(hcp.Namespace)
-	if _, err := r.CreateOrUpdate(ctx, r, communityOperatorsCronJob, func() error {
-		return olm.ReconcileCommunityOperatorsCronJob(communityOperatorsCronJob, p.OwnerRef, p.CLIImage)
-	}); err != nil {
-		return fmt.Errorf("failed to reconcile community operators cronjob: %w", err)
-	}
-	marketplaceOperatorsCronJob := manifests.RedHatMarketplaceOperatorsCronJob(hcp.Namespace)
-	if _, err := r.CreateOrUpdate(ctx, r, marketplaceOperatorsCronJob, func() error {
-		return olm.ReconcileRedHatMarketplaceOperatorsCronJob(marketplaceOperatorsCronJob, p.OwnerRef, p.CLIImage)
-	}); err != nil {
-		return fmt.Errorf("failed to reconcile marketplace operators cronjob: %w", err)
-	}
-	redHatOperatorsCronJob := manifests.RedHatOperatorsCronJob(hcp.Namespace)
-	if _, err := r.CreateOrUpdate(ctx, r, redHatOperatorsCronJob, func() error {
-		return olm.ReconcileRedHatOperatorsCronJob(redHatOperatorsCronJob, p.OwnerRef, p.CLIImage)
-	}); err != nil {
-		return fmt.Errorf("failed to reconcile red hat operators cronjob: %w", err)
+		for _, cronjob := range olmcatalogs.GetCronJobReconcilers() {
+			cj := cronjob.Manifest(hcp.Namespace)
+			if _, err := r.CreateOrUpdate(ctx, r, cj, func() error {
+				return cronjob.Reconcile(cj, p.OwnerRef, p.CLIImage)
+			}); err != nil {
+				return fmt.Errorf("failed to reconcile %s cronjob: %w", cj.Name, err)
+			}
+		}
 	}
 
 	catalogOperatorMetricsService := manifests.CatalogOperatorMetricsService(hcp.Namespace)
@@ -2001,7 +1957,7 @@ func (r *HostedControlPlaneReconciler) reconcileOperatorLifecycleManager(ctx con
 	}
 	catalogOperatorDeployment := manifests.CatalogOperatorDeployment(hcp.Namespace)
 	if _, err := r.CreateOrUpdate(ctx, r, catalogOperatorDeployment, func() error {
-		return olm.ReconcileCatalogOperatorDeployment(catalogOperatorDeployment, p.OwnerRef, p.OLMImage, p.ProxyImage, p.OperatorRegistryImage, p.ReleaseVersion, p.DeploymentConfig, p.AvailabilityProberImage, hcp.Spec.APIPort)
+		return olm.ReconcileCatalogOperatorDeployment(catalogOperatorDeployment, p.OwnerRef, p.OLMImage, p.ProxyImage, p.OperatorRegistryImage, p.ReleaseVersion, p.DeploymentConfig, p.AvailabilityProberImage, hcp.Spec.APIPort, p.NoProxy)
 	}); err != nil {
 		return fmt.Errorf("failed to reconcile catalog operator deployment: %w", err)
 	}
@@ -2022,14 +1978,14 @@ func (r *HostedControlPlaneReconciler) reconcileOperatorLifecycleManager(ctx con
 
 	olmOperatorDeployment := manifests.OLMOperatorDeployment(hcp.Namespace)
 	if _, err := r.CreateOrUpdate(ctx, r, olmOperatorDeployment, func() error {
-		return olm.ReconcileOLMOperatorDeployment(olmOperatorDeployment, p.OwnerRef, p.OLMImage, p.ProxyImage, p.ReleaseVersion, p.DeploymentConfig, p.AvailabilityProberImage, hcp.Spec.APIPort)
+		return olm.ReconcileOLMOperatorDeployment(olmOperatorDeployment, p.OwnerRef, p.OLMImage, p.ProxyImage, p.ReleaseVersion, p.DeploymentConfig, p.AvailabilityProberImage, hcp.Spec.APIPort, p.NoProxy)
 	}); err != nil {
 		return fmt.Errorf("failed to reconcile olm operator deployment: %w", err)
 	}
 
 	packageServerDeployment := manifests.OLMPackageServerDeployment(hcp.Namespace)
 	if _, err := r.CreateOrUpdate(ctx, r, packageServerDeployment, func() error {
-		return olm.ReconcilePackageServerDeployment(packageServerDeployment, p.OwnerRef, p.OLMImage, p.ProxyImage, p.ReleaseVersion, p.PackageServerConfig, p.AvailabilityProberImage, hcp.Spec.APIPort)
+		return olm.ReconcilePackageServerDeployment(packageServerDeployment, p.OwnerRef, p.OLMImage, p.ProxyImage, p.ReleaseVersion, p.PackageServerConfig, p.AvailabilityProberImage, hcp.Spec.APIPort, p.NoProxy)
 	}); err != nil {
 		return fmt.Errorf("failed to reconcile packageserver deployment: %w", err)
 	}

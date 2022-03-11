@@ -379,6 +379,21 @@ provided: reconciliation is paused on the resource until that date. If the boole
 provided: reconciliation is paused on the resource until the field is removed.</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>olmCatalogPlacement</code></br>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>OLMCatalogPlacement specifies the placement of OLM catalog components. By default,
+this is set to management and OLM catalog components are deployed onto the management
+cluster. If set to guest, the OLM catalog components will be deployed onto the guest
+cluster.</p>
+</td>
+</tr>
 </table>
 </td>
 </tr>
@@ -2556,6 +2571,21 @@ provided: reconciliation is paused on the resource until that date. If the boole
 provided: reconciliation is paused on the resource until the field is removed.</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>olmCatalogPlacement</code></br>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>OLMCatalogPlacement specifies the placement of OLM catalog components. By default,
+this is set to management and OLM catalog components are deployed onto the management
+cluster. If set to guest, the OLM catalog components will be deployed onto the guest
+cluster.</p>
+</td>
+</tr>
 </tbody>
 </table>
 ###HostedClusterStatus { #hypershift.openshift.io/v1alpha1.HostedClusterStatus }
@@ -2981,6 +3011,21 @@ string
 Either a date can be provided in RFC3339 format or a boolean. If a date is
 provided: reconciliation is paused on the resource until that date. If the boolean true is
 provided: reconciliation is paused on the resource until the field is removed.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>olmCatalogPlacement</code></br>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>OLMCatalogPlacement specifies the placement of OLM catalog components. By default,
+this is set to management and OLM catalog components are deployed onto the management
+cluster. If set to guest, the OLM catalog components will be deployed onto the guest
+cluster.</p>
 </td>
 </tr>
 </tbody>

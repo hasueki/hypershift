@@ -41,6 +41,7 @@ import (
 	"github.com/openshift/hypershift/control-plane-operator/hostedclusterconfigoperator/operator"
 	"github.com/openshift/hypershift/support/config"
 	"github.com/openshift/hypershift/support/globalconfig"
+	"github.com/openshift/hypershift/support/olmcatalogs"
 	"github.com/openshift/hypershift/support/releaseinfo"
 	"github.com/openshift/hypershift/support/upsert"
 	"github.com/openshift/hypershift/support/util"
@@ -367,7 +368,7 @@ func (r *reconciler) reconcile(ctx context.Context) error {
 	}
 
 	log.Info("reconciling olm resources")
-	errs = append(errs, r.reconcileOLM(ctx, hcp)...)
+	errs = append(errs, r.reconcileOLM(ctx, hcp, releaseImage)...)
 
 	log.Info("reconciling observed configuration")
 	errs = append(errs, r.reconcileObservedConfiguration(ctx, hcp)...)
@@ -805,8 +806,30 @@ func (r *reconciler) reconcileCloudCredentialSecrets(ctx context.Context, hcp *h
 	return errs
 }
 
-func (r *reconciler) reconcileOLM(ctx context.Context, hcp *hyperv1.HostedControlPlane) []error {
+func (r *reconciler) reconcileOLM(ctx context.Context, hcp *hyperv1.HostedControlPlane, releaseImage *releaseinfo.ReleaseImage) []error {
 	var errs []error
+
+	p := olm.NewOperatorLifecycleManagerParams(hcp, releaseImage.ComponentImages())
+
+	if *hcp.Spec.OLMCatalogPlacement == "guest" {
+		for _, service := range olmcatalogs.GetServiceReconcilers() {
+			svc := service.Manifest(hcp.Namespace)
+			if _, err := r.CreateOrUpdate(ctx, r.client, svc, func() error {
+				return service.Reconcile(svc, p.OwnerRef)
+			}); err != nil {
+				errs = append(errs, fmt.Errorf("failed to reconcile %s service: %w", svc.Name, err))
+			}
+		}
+
+		for _, deployment := range olmcatalogs.GetDeploymentReconcilers() {
+			deploy := deployment.Manifest(hcp.Namespace)
+			if _, err := r.CreateOrUpdate(ctx, r.client, deploy, func() error {
+				return deployment.Reconcile(deploy, p.OwnerRef, p.DeploymentConfig)
+			}); err != nil {
+				errs = append(errs, fmt.Errorf("failed to reconcile %s deployment: %w", deploy.Name, err))
+			}
+		}
+	}
 
 	catalogs := []struct {
 		manifest  func() *operatorsv1alpha1.CatalogSource

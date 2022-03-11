@@ -1,6 +1,8 @@
 package olm
 
 import (
+	"strings"
+
 	hyperv1 "github.com/openshift/hypershift/api/v1alpha1"
 	"github.com/openshift/hypershift/control-plane-operator/controllers/hostedcontrolplane/manifests"
 	prometheusoperatorv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
@@ -10,17 +12,22 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 
 	"github.com/openshift/hypershift/control-plane-operator/controllers/hostedcontrolplane/kas"
+	"github.com/openshift/hypershift/support/assets"
 	"github.com/openshift/hypershift/support/config"
 	"github.com/openshift/hypershift/support/util"
 )
 
 var (
-	catalogOperatorMetricsService = MustService("assets/catalog-metrics-service.yaml")
-	catalogOperatorDeployment     = MustDeployment("assets/catalog-operator-deployment.yaml")
+	catalogOperatorMetricsService = assets.MustService("olm/catalog-metrics-service.yaml")
+	catalogOperatorDeployment     = assets.MustDeployment("olm/catalog-operator-deployment.yaml")
 
-	olmOperatorMetricsService = MustService("assets/olm-metrics-service.yaml")
-	olmOperatorDeployment     = MustDeployment("assets/olm-operator-deployment.yaml")
+	olmOperatorMetricsService = assets.MustService("olm/olm-metrics-service.yaml")
+	olmOperatorDeployment     = assets.MustDeployment("olm/olm-operator-deployment.yaml")
 )
+
+func catalogOperatorLabels() map[string]string {
+	return map[string]string{"app": "catalog-operator", hyperv1.ControlPlaneComponent: "catalog-operator"}
+}
 
 func olmOperatorLabels() map[string]string {
 	return map[string]string{"app": "olm-operator", hyperv1.ControlPlaneComponent: "olm-operator"}
@@ -40,7 +47,7 @@ func ReconcileCatalogOperatorMetricsService(svc *corev1.Service, ownerRef config
 	return nil
 }
 
-func ReconcileCatalogOperatorDeployment(deployment *appsv1.Deployment, ownerRef config.OwnerRef, olmImage, socks5ProxyImage, operatorRegistryImage, releaseVersion string, dc config.DeploymentConfig, availabilityProberImage string, apiPort *int32) error {
+func ReconcileCatalogOperatorDeployment(deployment *appsv1.Deployment, ownerRef config.OwnerRef, olmImage, socks5ProxyImage, operatorRegistryImage, releaseVersion string, dc config.DeploymentConfig, availabilityProberImage string, apiPort *int32, noProxy []string) error {
 	ownerRef.ApplyTo(deployment)
 	deployment.Spec = catalogOperatorDeployment.DeepCopy().Spec
 	for i, container := range deployment.Spec.Template.Spec.Containers {
@@ -64,6 +71,8 @@ func ReconcileCatalogOperatorDeployment(deployment *appsv1.Deployment, ownerRef 
 			deployment.Spec.Template.Spec.Containers[0].Env[i].Value = olmImage
 		case "OPERATOR_REGISTRY_IMAGE":
 			deployment.Spec.Template.Spec.Containers[0].Env[i].Value = operatorRegistryImage
+		case "NO_PROXY":
+			deployment.Spec.Template.Spec.Containers[0].Env[i].Value = strings.Join(noProxy, ",")
 		}
 	}
 	dc.ApplyTo(deployment)
@@ -86,7 +95,7 @@ func ReconcileOLMOperatorMetricsService(svc *corev1.Service, ownerRef config.Own
 	return nil
 }
 
-func ReconcileOLMOperatorDeployment(deployment *appsv1.Deployment, ownerRef config.OwnerRef, olmImage, socks5ProxyImage, releaseVersion string, dc config.DeploymentConfig, availabilityProberImage string, apiPort *int32) error {
+func ReconcileOLMOperatorDeployment(deployment *appsv1.Deployment, ownerRef config.OwnerRef, olmImage, socks5ProxyImage, releaseVersion string, dc config.DeploymentConfig, availabilityProberImage string, apiPort *int32, noProxy []string) error {
 	ownerRef.ApplyTo(deployment)
 	deployment.Spec = olmOperatorDeployment.DeepCopy().Spec
 	for i, container := range deployment.Spec.Template.Spec.Containers {
@@ -106,10 +115,65 @@ func ReconcileOLMOperatorDeployment(deployment *appsv1.Deployment, ownerRef conf
 		switch env.Name {
 		case "RELEASE_VERSION":
 			deployment.Spec.Template.Spec.Containers[0].Env[i].Value = releaseVersion
+		case "NO_PROXY":
+			deployment.Spec.Template.Spec.Containers[0].Env[i].Value = strings.Join(noProxy, ",")
 		}
 	}
 	dc.ApplyTo(deployment)
 	util.AvailabilityProber(kas.InClusterKASReadyURL(deployment.Namespace, apiPort), availabilityProberImage, &deployment.Spec.Template.Spec)
+	return nil
+}
+
+func ReconcileCatalogServiceMonitor(sm *prometheusoperatorv1.ServiceMonitor, ownerRef config.OwnerRef) error {
+	ownerRef.ApplyTo(sm)
+
+	sm.Spec.Selector.MatchLabels = catalogOperatorLabels()
+	sm.Spec.NamespaceSelector = prometheusoperatorv1.NamespaceSelector{
+		MatchNames: []string{sm.Namespace},
+	}
+	targetPort := intstr.FromString("metrics")
+	sm.Spec.Endpoints = []prometheusoperatorv1.Endpoint{
+		{
+			Interval:   "15s",
+			TargetPort: &targetPort,
+			Scheme:     "https",
+			TLSConfig: &prometheusoperatorv1.TLSConfig{
+				SafeTLSConfig: prometheusoperatorv1.SafeTLSConfig{
+					ServerName: "catalog-operator-metrics",
+					Cert: prometheusoperatorv1.SecretOrConfigMap{
+						Secret: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: manifests.MetricsClientCertSecret(sm.Namespace).Name,
+							},
+							Key: "tls.crt",
+						},
+					},
+					KeySecret: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: manifests.MetricsClientCertSecret(sm.Namespace).Name,
+						},
+						Key: "tls.key",
+					},
+					CA: prometheusoperatorv1.SecretOrConfigMap{
+						Secret: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: manifests.MetricsClientCertSecret(sm.Namespace).Name,
+							},
+							Key: "ca.crt",
+						},
+					},
+				},
+			},
+			MetricRelabelConfigs: []*prometheusoperatorv1.RelabelConfig{
+				{
+					Action:       "drop",
+					Regex:        "etcd_(debugging|disk|server).*",
+					SourceLabels: []string{"__name__"},
+				},
+			},
+		},
+	}
+
 	return nil
 }
 

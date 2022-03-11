@@ -1,4 +1,4 @@
-package olm
+package assets
 
 import (
 	"embed"
@@ -15,7 +15,7 @@ import (
 	"github.com/openshift/hypershift/support/api"
 )
 
-//go:embed assets/*
+//go:embed olm/*
 var content embed.FS
 
 func AssetDir(name string) ([]string, error) {
