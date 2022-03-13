@@ -226,6 +226,17 @@ type HostedClusterSpec struct {
 	// provided: reconciliation is paused on the resource until the field is removed.
 	// +optional
 	PausedUntil *string `json:"pausedUntil,omitempty"`
+
+	// OLMCatalogPlacement specifies the placement of OLM catalog components. By default,
+	// this is set to management and OLM catalog components are deployed onto the management
+	// cluster. If set to guest, the OLM catalog components will be deployed onto the guest
+	// cluster.
+	//
+	// +kubebuilder:validation:Enum=management;guest
+	// +kubebuilder:default=management
+	// +optional
+	// +immutable
+	OLMCatalogPlacement string `json:"olmCatalogPlacement,omitempty"`
 }
 
 // ImageContentSource specifies image mirrors that can be used by cluster nodes
