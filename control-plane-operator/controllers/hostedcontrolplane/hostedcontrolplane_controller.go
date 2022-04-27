@@ -625,6 +625,12 @@ func (r *HostedControlPlaneReconciler) update(ctx context.Context, hostedControl
 		return fmt.Errorf("failed to reconcile openshift apiserver: %w", err)
 	}
 
+	// Reconcile openshift controller manager
+	r.Log.Info("Reconciling OpenShift Controller Manager")
+	if err = r.reconcileOpenShiftControllerManager(ctx, hostedControlPlane, globalConfig, releaseImage); err != nil {
+		return fmt.Errorf("failed to reconcile openshift controller manager: %w", err)
+	}
+
 	// Reconcile openshift oauth apiserver
 	r.Log.Info("Reconciling OpenShift OAuth API Server")
 	if err := r.reconcileOpenShiftOAuthAPIServer(ctx, hostedControlPlane, globalConfig, releaseImage, infraStatus.OauthAPIServerHost); err != nil {
@@ -635,12 +641,6 @@ func (r *HostedControlPlaneReconciler) update(ctx context.Context, hostedControl
 	r.Log.Info("Reconciling OAuth Server")
 	if err = r.reconcileOAuthServer(ctx, hostedControlPlane, globalConfig, releaseImage, infraStatus.OAuthHost, infraStatus.OAuthPort); err != nil {
 		return fmt.Errorf("failed to reconcile openshift oauth apiserver: %w", err)
-	}
-
-	// Reconcile openshift controller manager
-	r.Log.Info("Reconciling OpenShift Controller Manager")
-	if err = r.reconcileOpenShiftControllerManager(ctx, hostedControlPlane, globalConfig, releaseImage); err != nil {
-		return fmt.Errorf("failed to reconcile openshift controller manager: %w", err)
 	}
 
 	// Reconcile cluster policy controller
@@ -1626,6 +1626,13 @@ func (r *HostedControlPlaneReconciler) reconcileKubeAPIServer(ctx context.Contex
 	}); err != nil {
 		return fmt.Errorf("failed to reconcile api server deployment: %w", err)
 	}
+
+	// Ensure all replicas are updated and ready
+	// https://kubernetes.io/releases/version-skew-policy/#supported-component-upgrade-order
+	if ready, err := util.IsDeploymentReady(ctx, r, kubeAPIServerDeployment); !ready {
+		return fmt.Errorf("kas deployment not ready: %w", err)
+	}
+
 	return nil
 }
 
@@ -1735,6 +1742,13 @@ func (r *HostedControlPlaneReconciler) reconcileOpenShiftAPIServer(ctx context.C
 	}); err != nil {
 		return fmt.Errorf("failed to reconcile openshift apiserver deployment: %w", err)
 	}
+
+	// Ensure all replicas are updated and ready
+	// https://github.com/openshift/enhancements/blob/master/enhancements/update/eus-upgrades-mvp.md
+	if ready, err := util.IsDeploymentReady(ctx, r, deployment); !ready {
+		return fmt.Errorf("openshift apiserver deployment not ready: %w", err)
+	}
+
 	return nil
 }
 
