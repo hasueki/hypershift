@@ -1000,7 +1000,7 @@ func TestHostedClusterWatchesEverythingItCreates(t *testing.T) {
 	r := &HostedClusterReconciler{
 		Client:                        client,
 		Clock:                         clock.RealClock{},
-		ManagementClusterCapabilities: fakecapabilities.NewSupportAllExcept(capabilities.CapabilityConfigOpenshiftIO),
+		ManagementClusterCapabilities: fakecapabilities.NewSupportAllExcept(capabilities.CapabilityInfrastructure),
 		createOrUpdate:                func(reconcile.Request) upsert.CreateOrUpdateFN { return ctrl.CreateOrUpdate },
 		ReleaseProvider:               &fakereleaseprovider.FakeReleaseProvider{},
 		ImageMetadataProvider:         &fakeimagemetadataprovider.FakeImageMetadataProvider{Result: &dockerv1client.DockerImageConfig{}},
