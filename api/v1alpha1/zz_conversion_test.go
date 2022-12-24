@@ -1,7 +1,6 @@
 package v1alpha1
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"math/rand"
@@ -12,7 +11,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 	fuzz "github.com/google/gofuzz"
 	configv1 "github.com/openshift/api/config/v1"
-	"github.com/openshift/hypershift/api/util/configrefs"
 	"github.com/openshift/hypershift/api/util/ipnet"
 	"github.com/openshift/hypershift/api/v1beta1"
 	"github.com/openshift/hypershift/support/conversiontest"
@@ -76,97 +74,44 @@ func configFuzzer(in *ClusterConfiguration, c fuzz.Continue) {
 		if in.APIServer.Audit.Profile == "" {
 			in.APIServer.Audit.Profile = configv1.DefaultAuditProfileType
 		}
-		in.Items = append(in.Items, runtime.RawExtension{
-			Raw: serializeResource(&configv1.APIServer{Spec: *in.APIServer}),
-		})
 	}
 	if randomBool() {
 		in.Authentication = &configv1.AuthenticationSpec{}
 		c.Fuzz(in.Authentication)
-		in.Items = append(in.Items, runtime.RawExtension{
-			Raw: serializeResource(&configv1.Authentication{Spec: *in.Authentication}),
-		})
 	}
 	if randomBool() {
 		in.FeatureGate = &configv1.FeatureGateSpec{}
 		c.Fuzz(in.FeatureGate)
-		in.Items = append(in.Items, runtime.RawExtension{
-			Raw: serializeResource(&configv1.FeatureGate{Spec: *in.FeatureGate}),
-		})
 	}
 	if randomBool() {
 		in.Image = &configv1.ImageSpec{}
 		c.Fuzz(in.Image)
-		in.Items = append(in.Items, runtime.RawExtension{
-			Raw: serializeResource(&configv1.Image{Spec: *in.Image}),
-		})
 	}
 	if randomBool() {
 		in.Ingress = &configv1.IngressSpec{}
 		c.Fuzz(in.Ingress)
-		in.Items = append(in.Items, runtime.RawExtension{
-			Raw: serializeResource(&configv1.Ingress{Spec: *in.Ingress}),
-		})
 	}
 	if randomBool() {
 		in.Network = &configv1.NetworkSpec{}
 		c.Fuzz(in.Network)
-		in.Items = append(in.Items, runtime.RawExtension{
-			Raw: serializeResource(&configv1.Network{Spec: *in.Network}),
-		})
 	}
 	if randomBool() {
 		in.OAuth = &configv1.OAuthSpec{}
 		c.Fuzz(in.OAuth)
-		in.Items = append(in.Items, runtime.RawExtension{
-			Raw: serializeResource(&configv1.OAuth{Spec: *in.OAuth}),
-		})
 	}
 	if randomBool() {
 		in.Scheduler = &configv1.SchedulerSpec{}
 		c.Fuzz(in.Scheduler)
-		in.Items = append(in.Items, runtime.RawExtension{
-			Raw: serializeResource(&configv1.Scheduler{Spec: *in.Scheduler}),
-		})
 	}
 	if randomBool() {
 		in.Proxy = &configv1.ProxySpec{}
 		c.Fuzz(in.Proxy)
-		in.Items = append(in.Items, runtime.RawExtension{
-			Raw: serializeResource(&configv1.Proxy{Spec: *in.Proxy}),
-		})
 	}
-	configMapRefs := []corev1.LocalObjectReference{}
-	for _, ref := range configrefs.ConfigMapRefs(in) {
-		configMapRefs = append(configMapRefs, corev1.LocalObjectReference{
-			Name: ref,
-		})
-	}
-	in.ConfigMapRefs = configMapRefs
-	secretRefs := []corev1.LocalObjectReference{}
-	for _, ref := range configrefs.SecretRefs(in) {
-		secretRefs = append(secretRefs, corev1.LocalObjectReference{
-			Name: ref,
-		})
-	}
-	in.SecretRefs = secretRefs
-}
 
-func serializeResource(obj runtime.Object) []byte {
-	b := &bytes.Buffer{}
-	gvks, _, err := localScheme.ObjectKinds(obj)
+	err := populateDeprecatedGlobalConfig(in)
 	if err != nil {
 		panic(err.Error())
 	}
-	if len(gvks) == 0 {
-		panic(fmt.Sprintf("did not find gvk for %T", obj))
-	}
-	obj.GetObjectKind().SetGroupVersionKind(gvks[0])
-	err = serializer.Encode(obj, b)
-	if err != nil {
-		panic(err.Error())
-	}
-	return b.Bytes()
 }
 
 func randomBool() bool {
@@ -212,6 +157,7 @@ func awsRolesRefFuzzer(in *AWSPlatformSpec, c fuzz.Continue) {
 		Name: c.RandString(),
 	}
 	in.RolesRef = AWSRolesRef{}
+	populateDeprecatedAWSRoles(in)
 }
 
 func hcpFuzzer(in *HostedControlPlane, c fuzz.Continue) {
@@ -248,22 +194,15 @@ func fixupHostedCluster(in conversion.Convertible) {
 		panic(fmt.Sprintf("unexpected convertible type: %T", in))
 	}
 	if hc.Spec.Configuration != nil {
-		for i, item := range hc.Spec.Configuration.Items {
-			resource, _, err := serializer.Decode(item.Raw, nil, nil)
-			if err != nil {
-				panic(err.Error())
-			}
-			hc.Spec.Configuration.Items[i].Raw = serializeResource(resource)
+		err := populateDeprecatedGlobalConfig(hc.Spec.Configuration)
+		if err != nil {
+			panic(err.Error())
 		}
 	}
 	if hc.Spec.Platform.AWS != nil {
-		hc.Spec.Platform.AWS.RolesRef = AWSRolesRef{}
-		roles := hc.Spec.Platform.AWS.Roles
-		sort.SliceStable(roles, func(i, j int) bool {
-			return roles[i].Namespace < roles[j].Namespace
-		})
-		hc.Spec.Platform.AWS.Roles = roles
+		populateDeprecatedAWSRoles(hc.Spec.Platform.AWS)
 	}
+	populateDeprecatedNetworkingFields(&hc.Spec.Networking)
 }
 
 func fixupHostedControlPlane(in conversion.Convertible) {
@@ -273,12 +212,9 @@ func fixupHostedControlPlane(in conversion.Convertible) {
 		panic(fmt.Sprintf("unexpected convertible type: %T", in))
 	}
 	if hcp.Spec.Configuration != nil {
-		for i, item := range hcp.Spec.Configuration.Items {
-			resource, _, err := serializer.Decode(item.Raw, nil, nil)
-			if err != nil {
-				panic(err.Error())
-			}
-			hcp.Spec.Configuration.Items[i].Raw = serializeResource(resource)
+		err := populateDeprecatedGlobalConfig(hcp.Spec.Configuration)
+		if err != nil {
+			panic(err.Error())
 		}
 	}
 	if hcp.Spec.Platform.AWS != nil {

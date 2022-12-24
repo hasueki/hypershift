@@ -46,11 +46,7 @@ func (h *HostedCluster) ConvertTo(rawDst conversion.Hub) error {
 }
 
 func (h *HostedCluster) ConvertFrom(rawSrc conversion.Hub) error {
-	err := serializationConvert(rawSrc, h)
-	if err != nil {
-		return err
-	}
-	return fixupHostedClusterAfterConversion(h)
+	return serializationConvert(rawSrc, h)
 }
 
 func (n *NodePool) ConvertTo(rawDst conversion.Hub) error {
@@ -117,14 +113,6 @@ func fixupHostedClusterBeforeConversion(hc *HostedCluster) error {
 	return nil
 }
 
-func fixupHostedClusterAfterConversion(hc *HostedCluster) error {
-	if hc.Spec.Platform.AWS != nil {
-		populatedDeprecatedAWSRoles(hc.Spec.Platform.AWS)
-	}
-	populateDeprecatedNetworkingFields(&hc.Spec.Networking)
-	return populateDeprecatedGlobalConfig(hc.Spec.Configuration)
-}
-
 func fixupHostedControlPlaneBeforeConversion(hcp *HostedControlPlane) error {
 	if hcp.Spec.Platform.AWS != nil {
 		reconcileDeprecatedAWSRoles(hcp.Spec.Platform.AWS)
@@ -143,25 +131,20 @@ func fixupHostedControlPlaneAfterConversion(hcp *HostedControlPlane) error {
 	populateDeprecatedNetworkingFields(&hcp.Spec.Networking)
 	populateDeprecatedHCPNetworkingFields(hcp)
 	if hcp.Spec.Platform.AWS != nil {
-		populatedDeprecatedAWSRoles(hcp.Spec.Platform.AWS)
+		populateDeprecatedAWSRoles(hcp.Spec.Platform.AWS)
 	}
 	return populateDeprecatedGlobalConfig(hcp.Spec.Configuration)
 }
 
-func populatedDeprecatedAWSRoles(aws *AWSPlatformSpec) {
+func populateDeprecatedAWSRoles(aws *AWSPlatformSpec) {
 	aws.KubeCloudControllerCreds.Name = convertARNToSecretName(aws.RolesRef.KubeCloudControllerARN)
 	aws.NodePoolManagementCreds.Name = convertARNToSecretName(aws.RolesRef.NodePoolManagementARN)
 	aws.ControlPlaneOperatorCreds.Name = convertARNToSecretName(aws.RolesRef.ControlPlaneOperatorARN)
 	aws.Roles = []AWSRoleCredentials{
 		{
-			ARN:       aws.RolesRef.IngressARN,
-			Namespace: "openshift-ingress-operator",
+			ARN:       aws.RolesRef.NetworkARN,
+			Namespace: "openshift-cloud-network-config-controller",
 			Name:      "cloud-credentials",
-		},
-		{
-			ARN:       aws.RolesRef.ImageRegistryARN,
-			Namespace: "openshift-image-registry",
-			Name:      "installer-cloud-credentials",
 		},
 		{
 			ARN:       aws.RolesRef.StorageARN,
@@ -169,8 +152,13 @@ func populatedDeprecatedAWSRoles(aws *AWSPlatformSpec) {
 			Name:      "ebs-cloud-credentials",
 		},
 		{
-			ARN:       aws.RolesRef.NetworkARN,
-			Namespace: "openshift-cloud-network-config-controller",
+			ARN:       aws.RolesRef.ImageRegistryARN,
+			Namespace: "openshift-image-registry",
+			Name:      "installer-cloud-credentials",
+		},
+		{
+			ARN:       aws.RolesRef.IngressARN,
+			Namespace: "openshift-ingress-operator",
 			Name:      "cloud-credentials",
 		},
 	}
