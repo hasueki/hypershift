@@ -911,6 +911,16 @@ func (r *HostedControlPlaneReconciler) reconcile(ctx context.Context, hostedCont
 		return fmt.Errorf("failed to reconcile cluster version operator: %w", err)
 	}
 
+	// Block until cluster version operator is fully ready to ensure readiness before HCCO
+	ready, err = util.IsDeploymentReady(ctx, r, manifests.ClusterVersionOperatorDeployment(hostedControlPlane.Namespace))
+	if err != nil {
+		return fmt.Errorf("failed to check cluster version operator availability: %w", err)
+	}
+	if !ready {
+		r.Log.Info("Waiting for cluster version operator deployment to become ready")
+		return nil
+	}
+
 	r.Log.Info("Reconciling ClusterNetworkOperator")
 	if err := r.reconcileClusterNetworkOperator(ctx, hostedControlPlane, releaseImage, createOrUpdate); err != nil {
 		return fmt.Errorf("failed to reconcile cluster network operator: %w", err)
