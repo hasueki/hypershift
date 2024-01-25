@@ -45,6 +45,7 @@ type DeploymentConfig struct {
 	DebugDeployments          sets.String
 	ResourceRequestOverrides  ResourceOverrides
 	IsolateAsRequestServing   bool
+	RevisionHistoryLimit      int
 }
 
 func (c *DeploymentConfig) SetContainerResourcesIfPresent(container *corev1.Container) {
@@ -92,6 +93,9 @@ func (c *DeploymentConfig) ApplyTo(deployment *appsv1.Deployment) {
 		deployment.Spec.Strategy.RollingUpdate.MaxUnavailable = &maxUnavailable
 	}
 
+	// set revision history limit
+	deployment.Spec.RevisionHistoryLimit = pointer.Int32(int32(c.RevisionHistoryLimit))
+
 	// set default security context for pod
 	if c.SetDefaultSecurityContext {
 		deployment.Spec.Template.Spec.SecurityContext = &corev1.PodSecurityContext{
@@ -117,6 +121,8 @@ func (c *DeploymentConfig) ApplyTo(deployment *appsv1.Deployment) {
 
 func (c *DeploymentConfig) ApplyToDaemonSet(daemonset *appsv1.DaemonSet) {
 	// replicas is not used for DaemonSets
+	// set revision history limit
+	daemonset.Spec.RevisionHistoryLimit = pointer.Int32(int32(c.RevisionHistoryLimit))
 	c.Scheduling.ApplyTo(&daemonset.Spec.Template.Spec)
 	c.AdditionalLabels.ApplyTo(&daemonset.Spec.Template.ObjectMeta)
 	c.SecurityContexts.ApplyTo(&daemonset.Spec.Template.Spec)
@@ -129,6 +135,8 @@ func (c *DeploymentConfig) ApplyToDaemonSet(daemonset *appsv1.DaemonSet) {
 
 func (c *DeploymentConfig) ApplyToStatefulSet(sts *appsv1.StatefulSet) {
 	sts.Spec.Replicas = pointer.Int32Ptr(int32(c.Replicas))
+	// set revision history limit
+	sts.Spec.RevisionHistoryLimit = pointer.Int32(int32(c.RevisionHistoryLimit))
 	c.Scheduling.ApplyTo(&sts.Spec.Template.Spec)
 	c.AdditionalLabels.ApplyTo(&sts.Spec.Template.ObjectMeta)
 	c.SecurityContexts.ApplyTo(&sts.Spec.Template.Spec)
@@ -335,8 +343,8 @@ func (c *DeploymentConfig) SetDefaults(hcp *hyperv1.HostedControlPlane, multiZon
 		c.Replicas = *replicas
 	}
 	c.DebugDeployments = debugDeployments(hcp)
-
 	c.ResourceRequestOverrides = resourceRequestOverrides(hcp)
+	c.RevisionHistoryLimit = 2
 
 	c.setLocation(hcp, multiZoneSpreadLabels)
 	// TODO (alberto): make this private, atm is needed for the konnectivity agent daemonset.
