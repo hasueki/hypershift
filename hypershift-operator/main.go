@@ -58,6 +58,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	crclient "sigs.k8s.io/controller-runtime/pkg/client"
+	crconfig "sigs.k8s.io/controller-runtime/pkg/config/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
@@ -167,12 +168,16 @@ func run(ctx context.Context, opts *StartOptions, log logr.Logger) error {
 	leaseDuration := time.Second * 60
 	renewDeadline := time.Second * 40
 	retryPeriod := time.Second * 15
+	cacheSyncTimeout := time.Minute * 5
 	mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
-		NewClient:                     NewCachingClient,
-		Scheme:                        hyperapi.Scheme,
-		MetricsBindAddress:            opts.MetricsAddr,
-		Port:                          9443,
-		CertDir:                       opts.CertDir,
+		NewClient:          NewCachingClient,
+		Scheme:             hyperapi.Scheme,
+		MetricsBindAddress: opts.MetricsAddr,
+		Port:               9443,
+		CertDir:            opts.CertDir,
+		Controller: crconfig.ControllerConfigurationSpec{
+			CacheSyncTimeout: &cacheSyncTimeout,
+		},
 		LeaderElection:                true,
 		LeaderElectionID:              "hypershift-operator-leader-elect",
 		LeaderElectionResourceLock:    "leases",
