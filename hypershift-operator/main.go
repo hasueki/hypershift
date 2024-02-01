@@ -63,6 +63,7 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	ctrl "sigs.k8s.io/controller-runtime"
 	crclient "sigs.k8s.io/controller-runtime/pkg/client"
+	crconfig "sigs.k8s.io/controller-runtime/pkg/config"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -186,6 +187,9 @@ func run(ctx context.Context, opts *StartOptions, log logr.Logger) error {
 			Cache: &crclient.CacheOptions{
 				Unstructured: true,
 			},
+		},
+		Controller: crconfig.Controller{
+			CacheSyncTimeout: 5 * time.Minute,
 		},
 		LeaderElection:                true,
 		LeaderElectionID:              "hypershift-operator-leader-elect",
