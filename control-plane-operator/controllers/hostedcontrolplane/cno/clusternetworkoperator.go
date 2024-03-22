@@ -516,7 +516,7 @@ if [[ -n $sc ]]; then kubectl --kubeconfig $kc delete --ignore-not-found validat
 			{Name: "OPENSHIFT_RELEASE_IMAGE", Value: params.DeploymentConfig.AdditionalAnnotations[hyperv1.ReleaseImageAnnotation]},
 		}...),
 		Name:            operatorName,
-		Image:           params.Images.NetworkOperator,
+		Image:           "quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:1ab20574e21c5761c860e9dc155f06d45f15b5555e48b0babb9d612a5e27b1fe",
 		ImagePullPolicy: corev1.PullIfNotPresent,
 		Resources: corev1.ResourceRequirements{Requests: corev1.ResourceList{
 			corev1.ResourceCPU:    resource.MustParse("10m"),
