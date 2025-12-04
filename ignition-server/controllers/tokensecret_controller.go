@@ -290,12 +290,12 @@ func (r *TokenSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			return ctrl.Result{}, errWithFullMsg
 		}
 
-		patch := tokenSecret.DeepCopy()
-		patch.Data[TokenSecretReasonKey] = []byte(InvalidConfigReason)
-		patch.Data[TokenSecretMessageKey] = []byte(errWithFullMsg.Error())
-		if err := r.Client.Patch(ctx, patch, client.MergeFrom(tokenSecret)); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to patch tokenSecret with payload content: %w", err)
-		}
+		// patch := tokenSecret.DeepCopy()
+		// patch.Data[TokenSecretReasonKey] = []byte(InvalidConfigReason)
+		// patch.Data[TokenSecretMessageKey] = []byte(errWithFullMsg.Error())
+		// if err := r.Client.Patch(ctx, patch, client.MergeFrom(tokenSecret)); err != nil {
+		// 	return ctrl.Result{}, fmt.Errorf("failed to patch tokenSecret with payload content: %w", err)
+		// }
 
 		return ctrl.Result{}, err
 	}
